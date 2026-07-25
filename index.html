@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#24303D">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="予定帳">
+<title>予定帳</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===== 初回セットアップ画面（Firebase設定の貼り付け） ===== -->
+<div id="setupScreen" class="fullscreen hidden">
+  <div class="fullscreen-card">
+    <p class="app-title" style="text-align:center;">予定帳</p>
+    <p class="modal-help">はじめに、Firebaseプロジェクトの設定を貼り付けてください。Firebaseコンソールの「プロジェクトの設定 → 全般 → マイアプリ」に表示される <code>firebaseConfig</code> の中身をそのままコピーして貼り付ければOKです。</p>
+    <label>firebaseConfig
+      <textarea id="setupConfig" rows="8" placeholder='{
+  apiKey: "...",
+  authDomain: "...",
+  projectId: "...",
+  storageBucket: "...",
+  messagingSenderId: "...",
+  appId: "..."
+}'></textarea>
+    </label>
+    <p id="setupError" class="modal-help small" style="color:var(--danger);"></p>
+    <div class="modal-actions">
+      <div class="modal-actions-right" style="margin-left:0;">
+        <button type="button" id="btnSetupSave" class="btn-solid">保存してはじめる</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ログイン画面 ===== -->
+<div id="loginScreen" class="fullscreen hidden">
+  <div class="fullscreen-card">
+    <p class="app-title" style="text-align:center;">予定帳</p>
+    <p class="modal-help" style="text-align:center;">メールアドレスでログインしてください。</p>
+    <form id="loginForm">
+      <label>メールアドレス
+        <input type="email" id="loginEmail" required autocomplete="username">
+      </label>
+      <label>パスワード
+        <input type="password" id="loginPassword" required autocomplete="current-password">
+      </label>
+      <p id="loginError" class="modal-help small" style="color:var(--danger);"></p>
+      <div class="modal-actions">
+        <div class="modal-actions-right" style="margin-left:0; width:100%;">
+          <button type="submit" class="btn-solid" style="width:100%;">ログイン</button>
+        </div>
+      </div>
+    </form>
+    <p class="modal-help small">アカウントは Firebase コンソールの Authentication からあらかじめ作成しておく方式です。ここでは新規登録はできません。</p>
+    <button type="button" id="btnSetupAgain" class="btn-ghost" style="margin-top:10px;">Firebase設定を変更する</button>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+
+  <!-- ===== ヘッダー：定規のような月ナビゲーション ===== -->
+  <header class="ruler-header">
+    <div class="ruler-top">
+      <h1 class="app-title" id="viewTitle">予定帳</h1>
+      <button id="btnSettings" class="icon-btn" aria-label="設定" title="設定">⚙</button>
+    </div>
+    <div class="ruler-nav" id="calendarNav">
+      <button id="btnPrevMonth" class="ruler-arrow" aria-label="前の月">‹</button>
+      <div class="ruler-scale" id="rulerScale">
+        <span class="ruler-year" id="rulerYear">2026</span>
+        <span class="ruler-month" id="rulerMonth">07</span>
+      </div>
+      <button id="btnNextMonth" class="ruler-arrow" aria-label="次の月">›</button>
+    </div>
+    <div class="ruler-ticks" aria-hidden="true"></div>
+  </header>
+
+  <div id="syncStatus" class="sync-status" role="status"></div>
+
+  <!-- ===== カレンダー画面（方眼紙グリッド） ===== -->
+  <main id="calendarView">
+    <div class="legend-row" id="legendRow"></div>
+    <div class="weekday-row" id="weekdayRow"></div>
+    <div class="calendar-grid" id="calendarGrid"></div>
+
+    <!-- ===== 選択した日の詳細 ===== -->
+    <section class="day-panel" id="dayPanel">
+      <div class="day-panel-head">
+        <h2 id="dayPanelTitle">日付を選択</h2>
+        <button id="btnAddEvent" class="stamp-btn" aria-label="予定を追加">＋</button>
+      </div>
+      <ul id="eventList" class="event-list"></ul>
+      <p id="emptyMsg" class="empty-msg">この日の予定はまだありません。＋で追加できます。</p>
+    </section>
+  </main>
+
+  <!-- ===== 日記画面（時系列フィード） ===== -->
+  <main id="diaryView" class="hidden">
+    <div class="legend-row" id="diaryLegendRow"></div>
+    <section class="day-panel">
+      <div class="day-panel-head">
+        <h2>日記</h2>
+        <button id="btnAddDiary" class="stamp-btn" aria-label="日記を書く">＋</button>
+      </div>
+      <ul id="diaryList" class="event-list diary-list"></ul>
+      <p id="diaryEmptyMsg" class="empty-msg">まだ日記がありません。＋で書いてみましょう。</p>
+    </section>
+  </main>
+
+  <!-- ===== 下部タブ ===== -->
+  <nav class="tab-bar" aria-label="画面切り替え">
+    <button type="button" class="tab-btn active" id="tabCalendar" data-view="calendar">
+      <span class="tab-icon" aria-hidden="true">▦</span>
+      <span>カレンダー</span>
+    </button>
+    <button type="button" class="tab-btn" id="tabDiary" data-view="diary">
+      <span class="tab-icon" aria-hidden="true">✎</span>
+      <span>日記</span>
+    </button>
+  </nav>
+</div>
+
+<!-- ===== 予定 追加/編集 モーダル ===== -->
+<div id="eventModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="eventModalTitle">予定を追加</h2>
+    <form id="eventForm">
+      <label>日付
+        <input type="date" id="fDate" required>
+      </label>
+      <label>時刻（任意）
+        <input type="time" id="fTime">
+      </label>
+      <label>タイトル
+        <input type="text" id="fTitle" required maxlength="80" placeholder="例：歯医者">
+      </label>
+      <label>誰の予定？
+        <input type="text" id="fPerson" required maxlength="20" placeholder="例：たろう" list="personSuggestions">
+        <datalist id="personSuggestions"></datalist>
+      </label>
+      <label>メモ（任意）
+        <textarea id="fMemo" rows="3" maxlength="500" placeholder="場所や持ち物など"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="btnDeleteEvent" class="btn-ghost danger hidden">削除</button>
+        <div class="modal-actions-right">
+          <button type="button" id="btnCancelEvent" class="btn-ghost">キャンセル</button>
+          <button type="submit" class="btn-solid">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== 日記 追加/編集 モーダル ===== -->
+<div id="diaryModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2 id="diaryModalTitle">日記を書く</h2>
+    <form id="diaryForm">
+      <label>日付
+        <input type="date" id="dDate" required>
+      </label>
+      <label>だれが書く？
+        <input type="text" id="dPerson" required maxlength="20" placeholder="例：たろう" list="personSuggestionsDiary">
+        <datalist id="personSuggestionsDiary"></datalist>
+      </label>
+      <label>タイトル（任意）
+        <input type="text" id="dTitle" maxlength="60" placeholder="例：週末の思い出">
+      </label>
+      <label>本文
+        <textarea id="dBody" rows="6" required maxlength="4000" placeholder="今日あったことを書いてみましょう"></textarea>
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="btnDeleteDiary" class="btn-ghost danger hidden">削除</button>
+        <div class="modal-actions-right">
+          <button type="button" id="btnCancelDiary" class="btn-ghost">キャンセル</button>
+          <button type="submit" class="btn-solid">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== 設定モーダル ===== -->
+<div id="settingsModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>設定</h2>
+    <p class="modal-help" id="settingsAccountLabel">ログイン中：—</p>
+    <form id="settingsForm">
+      <label>あなたの名前（この端末用）
+        <input type="text" id="sPerson" maxlength="20" placeholder="例：たろう">
+      </label>
+      <p class="modal-help small">名前は端末ごとのローカル設定です。新しい予定・日記を追加するときの初期値になり、色分けにも使われます。</p>
+      <div class="modal-actions">
+        <button type="button" id="btnLogout" class="btn-ghost danger">ログアウト</button>
+        <div class="modal-actions-right">
+          <button type="button" id="btnCancelSettings" class="btn-ghost">閉じる</button>
+          <button type="submit" class="btn-solid">保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

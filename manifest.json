@@ -1,0 +1,14 @@
+{
+  "name": "予定帳 — Schedule",
+  "short_name": "予定帳",
+  "description": "GitHubリポジトリのJSONファイルを保存先にするシンプルなスケジュールアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F1F4EF",
+  "theme_color": "#24303D",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
