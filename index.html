@@ -136,11 +136,17 @@
   <div class="modal">
     <h2 id="eventModalTitle">予定を追加</h2>
     <form id="eventForm">
-      <label>日付
+      <label>開始日
         <input type="date" id="fDate" required>
       </label>
-      <label>時刻（任意）
+      <label>終了日（日をまたぐ予定のときだけ）
+        <input type="date" id="fEndDate">
+      </label>
+      <label>開始時刻（任意）
         <input type="time" id="fTime">
+      </label>
+      <label>終了時刻（任意）
+        <input type="time" id="fEndTime">
       </label>
       <label>タイトル
         <input type="text" id="fTitle" required maxlength="80" placeholder="例：歯医者">
