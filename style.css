@@ -13,6 +13,10 @@
   --person-1: #3D6B66; /* ティール */
   --person-2: #45507A; /* インディゴ */
   --person-3: #A15374; /* プラム */
+  --person-0-tint: rgba(193,148,60,.18);
+  --person-1-tint: rgba(61,107,102,.18);
+  --person-2-tint: rgba(69,80,122,.18);
+  --person-3-tint: rgba(161,83,116,.18);
   --radius: 10px;
   --serif: 'Zen Old Mincho', serif;
   --sans: 'Zen Kaku Gothic New', sans-serif;
@@ -140,11 +144,41 @@ input,textarea{ font-family: var(--sans); font-size: 16px; }
 
 /* ===== カレンダーグリッド ===== */
 .calendar-grid{
-  display:grid; grid-template-columns: repeat(7,1fr);
+  display:flex; flex-direction:column;
   border-top: 1px solid var(--grid-line-strong);
   border-left: 1px solid var(--grid-line-strong);
   background: var(--paper-raised);
 }
+.week-row{
+  position: relative;
+  display:grid; grid-template-columns: repeat(7,1fr);
+}
+.bar-layer{
+  position:absolute; left:0; right:0; top:0;
+  display:grid; grid-template-columns: repeat(7,1fr);
+  row-gap:2px;
+  padding-top: 20px;
+  pointer-events:none;
+  z-index: 2;
+}
+.bar{
+  pointer-events:auto;
+  align-self:start;
+  height:14px; line-height:13px;
+  font-size:9.5px; font-family: var(--sans); font-weight:500;
+  color: var(--ink); padding:0 5px 0 6px;
+  border-left: 2px solid var(--accent);
+  background: rgba(193,148,60,.18);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  cursor:pointer;
+  box-sizing:border-box;
+  margin: 0;
+}
+.bar-start{ border-radius: 3px 0 0 3px; }
+.bar-end{ border-radius: 0 3px 3px 0; }
+.bar-start.bar-end{ border-radius: 3px; }
+.bar:not(.bar-start){ border-left: none; padding-left:5px; }
+.bar-spacer{ flex:none; }
 .day-cell{
   border-right: 1px solid var(--grid-line-strong);
   border-bottom: 1px solid var(--grid-line-strong);
@@ -158,8 +192,8 @@ input,textarea{ font-family: var(--sans); font-size: 16px; }
   display:flex; flex-direction:column; gap:3px;
   overflow: hidden;
 }
-.day-cell.other-month{ opacity: .32; }
-.day-cell:hover{ background: rgba(193,148,60,.08); }
+.day-cell.other-month{ opacity: .32; cursor:default; }
+.day-cell:not(.other-month):hover{ background: rgba(193,148,60,.08); }
 .day-cell .num{
   font-family: var(--mono); font-size: 12px; color: var(--ink);
 }
@@ -224,6 +258,10 @@ input,textarea{ font-family: var(--sans); font-size: 16px; }
 .event-body .person-tag{
   font-family: var(--mono); font-size:11px; font-weight:700;
   color: inherit !important; margin-top:3px;
+}
+.event-body .range-tag{
+  font-family: var(--mono); font-size:10.5px; color: var(--ink-soft) !important;
+  margin-top:1px;
 }
 
 .empty-msg{ color: var(--ink-soft); font-size: 13px; text-align:center; padding: 18px 6px; }
