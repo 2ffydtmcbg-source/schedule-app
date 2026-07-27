@@ -126,6 +126,10 @@ function initFirebase(cfg){
       stopListeners();
       showLogin();
     }
+  }, (err)=>{
+    console.error(err);
+    showLogin();
+    document.getElementById('loginError').textContent = friendlyAuthError(err);
   });
 }
 
@@ -192,10 +196,27 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   try{
     await signInWithEmailAndPassword(auth, email, password);
   }catch(err){
-    errEl.textContent = 'ログインできませんでした（メールアドレスかパスワードを確認してください）';
     console.error(err);
+    errEl.textContent = friendlyAuthError(err);
   }
 });
+
+function friendlyAuthError(err){
+  const code = err && err.code ? err.code : '';
+  const map = {
+    'auth/invalid-api-key': 'Firebase設定(apiKey)が正しくありません。「Firebase設定を変更する」からコピーし直してください。',
+    'auth/api-key-not-valid': 'Firebase設定(apiKey)が正しくありません。「Firebase設定を変更する」からコピーし直してください。',
+    'auth/invalid-credential': 'メールアドレスかパスワードが違います。',
+    'auth/wrong-password': 'パスワードが違います。',
+    'auth/user-not-found': 'そのメールアドレスは登録されていません。Firebaseコンソールの Authentication → Users を確認してください。',
+    'auth/invalid-email': 'メールアドレスの形式が正しくありません。',
+    'auth/too-many-requests': '試行回数が多すぎます。しばらく待ってから再度お試しください。',
+    'auth/network-request-failed': 'ネットワークエラーです。通信状況を確認してください。',
+    'auth/configuration-not-found': 'Firebaseコンソールで「メール/パスワード」ログインが有効になっているか確認してください。',
+  };
+  if(map[code]) return map[code];
+  return `ログインできませんでした（${code || err.message || '不明なエラー'}）`;
+}
 
 document.getElementById('btnLogout').addEventListener('click', async ()=>{
   await signOut(auth);
@@ -228,59 +249,113 @@ function renderCalendar(){
 
   const firstOfMonth = new Date(viewYear, viewMonth, 1);
   const startOffset = firstOfMonth.getDay(); // 0=Sun
-  const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
-  const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
+  const gridStart = new Date(viewYear, viewMonth, 1 - startOffset);
 
   const cells = [];
-  for(let i=startOffset-1;i>=0;i--){
-    cells.push({ day: daysInPrevMonth-i, other:true, dateStr:null });
+  for(let i=0;i<42;i++){
+    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate()+i);
+    cells.push({
+      day: d.getDate(),
+      other: d.getMonth() !== viewMonth,
+      dateStr: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`
+    });
   }
-  for(let d=1; d<=daysInMonth; d++){
-    cells.push({ day:d, other:false, dateStr:`${viewYear}-${pad(viewMonth+1)}-${pad(d)}` });
-  }
-  while(cells.length % 7 !== 0 || cells.length < 42){
-    const nextDay = cells.length - (startOffset+daysInMonth) + 1;
-    cells.push({ day: nextDay, other:true, dateStr:null });
-    if(cells.length>=42) break;
-  }
+  const weeks = [];
+  for(let i=0;i<42;i+=7) weeks.push(cells.slice(i,i+7));
 
+  const multiDayEvents = events.filter(e=> e.endDate && e.endDate !== e.date);
   const t = todayStr();
-  els.grid.innerHTML = cells.map((c,idx)=>{
-    const col = idx % 7;
-    const classes = ['day-cell'];
-    if(c.other) classes.push('other-month');
-    if(col===0) classes.push('is-sun');
-    if(col===6) classes.push('is-sat');
-    if(c.dateStr === t) classes.push('is-today');
-    if(c.dateStr === selectedDate) classes.push('is-selected');
 
-    let chips = '';
-    if(c.dateStr){
-      const dayEvents = eventsOn(c.dateStr);
+  els.grid.innerHTML = weeks.map(week=>{
+    const weekStart = week[0].dateStr, weekEnd = week[6].dateStr;
+
+    // この週にかかる複数日イベントを抽出し、列(1-7)とレーンを割り当てる
+    const bars = multiDayEvents
+      .filter(e=> e.date <= weekEnd && e.endDate >= weekStart)
+      .map(e=>{
+        const clipStart = e.date > weekStart ? e.date : weekStart;
+        const clipEnd = e.endDate < weekEnd ? e.endDate : weekEnd;
+        return {
+          e,
+          startCol: week.findIndex(c=>c.dateStr===clipStart) + 1,
+          endCol: week.findIndex(c=>c.dateStr===clipEnd) + 1,
+          isStart: e.date === clipStart,
+          isEnd: e.endDate === clipEnd,
+        };
+      })
+      .sort((a,b)=> a.startCol-b.startCol || a.endCol-b.endCol);
+
+    const laneEnds = [];
+    bars.forEach(b=>{
+      let lane = laneEnds.findIndex(end=> end < b.startCol);
+      if(lane === -1){ lane = laneEnds.length; laneEnds.push(b.endCol); }
+      else { laneEnds[lane] = b.endCol; }
+      b.lane = lane;
+    });
+    const maxLanes = laneEnds.length;
+
+    const barLayerHtml = bars.map(b=>{
+      const cls = ['bar'];
+      if(b.isStart) cls.push('bar-start');
+      if(b.isEnd) cls.push('bar-end');
+      return `<div class="${cls.join(' ')}" data-id="${b.e.id}"
+        style="grid-column:${b.startCol} / ${b.endCol+1}; grid-row:${b.lane+1}; border-left-color:${colorForPerson(b.e.person)};">${escapeHtml(b.e.title)}</div>`;
+    }).join('');
+
+    const dayCellsHtml = week.map((c,col)=>{
+      const classes = ['day-cell'];
+      if(c.other) classes.push('other-month');
+      if(col===0) classes.push('is-sun');
+      if(col===6) classes.push('is-sat');
+      if(c.dateStr === t) classes.push('is-today');
+      if(c.dateStr === selectedDate) classes.push('is-selected');
+
+      const dayEvents = eventsOn(c.dateStr).filter(e=> !(e.endDate && e.endDate !== e.date));
       const shown = dayEvents.slice(0,2);
-      chips = `<div class="event-dot-row">` +
+      const chips = `<div class="event-dot-row">` +
         shown.map(e=>`<div class="event-chip" style="border-left-color:${colorForPerson(e.person)}">${escapeHtml(e.time?e.time+' ':'')}${escapeHtml(e.title)}</div>`).join('') +
         (dayEvents.length>2 ? `<div class="event-more">+${dayEvents.length-2}</div>` : '') +
         `</div>`;
-    }
-    return `<button type="button" class="${classes.join(' ')}" data-date="${c.dateStr||''}" ${c.other?'tabindex="-1"':''}>
-      <span class="num">${c.day}</span>
-      ${chips}
-    </button>`;
+      const spacer = maxLanes>0 ? `<div class="bar-spacer" style="height:${maxLanes*16}px"></div>` : '';
+
+      return `<button type="button" class="${classes.join(' ')}" data-date="${c.dateStr}" ${c.other?'tabindex="-1"':''}>
+        <span class="num">${c.day}</span>
+        ${spacer}
+        ${chips}
+      </button>`;
+    }).join('');
+
+    const barLayer = maxLanes>0
+      ? `<div class="bar-layer" style="grid-auto-rows:14px;">${barLayerHtml}</div>`
+      : '';
+
+    return `<div class="week-row">${barLayer}${dayCellsHtml}</div>`;
   }).join('');
 
-  els.grid.querySelectorAll('.day-cell').forEach(btn=>{
-    const ds = btn.dataset.date;
-    if(!ds) return;
-    btn.addEventListener('click', ()=>{ selectedDate = ds; render(); });
+  els.grid.querySelectorAll('.day-cell:not(.other-month)').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ selectedDate = btn.dataset.date; render(); });
+  });
+  els.grid.querySelectorAll('.bar').forEach(bar=>{
+    bar.addEventListener('click', (ev)=>{ ev.stopPropagation(); openEventModal(bar.dataset.id); });
   });
 
   renderDayPanel();
 }
 
 function eventsOn(dateStr){
-  return events.filter(e=>e.date===dateStr)
+  return events.filter(e=> dateStr >= e.date && dateStr <= (e.endDate || e.date))
     .sort((a,b)=> (a.time||'99:99').localeCompare(b.time||'99:99'));
+}
+
+function timeLabel(e){
+  if(e.time && e.endTime) return `${e.time}〜${e.endTime}`;
+  if(e.time) return `${e.time}〜`;
+  return '終日';
+}
+
+function rangeLabel(e){
+  if(!e.endDate || e.endDate === e.date) return '';
+  return `${formatDateShort(e.date)}〜${formatDateShort(e.endDate)}`;
 }
 
 function renderDayPanel(){
@@ -289,10 +364,11 @@ function renderDayPanel(){
   const list = eventsOn(selectedDate);
   els.eventList.innerHTML = list.map(e=>`
     <li class="event-item" data-id="${e.id}" style="border-left-color:${colorForPerson(e.person)}">
-      <span class="event-time">${escapeHtml(e.time||'終日')}</span>
+      <span class="event-time">${escapeHtml(timeLabel(e))}</span>
       <span class="event-body">
         <strong>${escapeHtml(e.title)}</strong>
         <span class="person-tag" style="color:${colorForPerson(e.person)}">${escapeHtml(e.person||'')}</span>
+        ${rangeLabel(e)?`<span class="range-tag">${escapeHtml(rangeLabel(e))}</span>`:''}
         ${e.memo?`<span>${escapeHtml(e.memo)}</span>`:''}
       </span>
     </li>
@@ -382,11 +458,18 @@ tabDiary.addEventListener('click', ()=> switchView('diary'));
 const eventModal = document.getElementById('eventModal');
 const eventForm = document.getElementById('eventForm');
 const fDate = document.getElementById('fDate');
+const fEndDate = document.getElementById('fEndDate');
 const fTime = document.getElementById('fTime');
+const fEndTime = document.getElementById('fEndTime');
 const fTitle = document.getElementById('fTitle');
 const fPerson = document.getElementById('fPerson');
 const fMemo = document.getElementById('fMemo');
 const btnDeleteEvent = document.getElementById('btnDeleteEvent');
+
+fDate.addEventListener('change', ()=>{
+  fEndDate.min = fDate.value;
+  if(fEndDate.value && fEndDate.value < fDate.value) fEndDate.value = '';
+});
 
 function refreshPersonSuggestions(){
   const dl = document.getElementById('personSuggestions');
@@ -399,7 +482,10 @@ function openEventModal(id){
   document.getElementById('eventModalTitle').textContent = ev ? '予定を編集' : '予定を追加';
   refreshPersonSuggestions();
   fDate.value = ev ? ev.date : selectedDate;
+  fEndDate.min = fDate.value;
+  fEndDate.value = ev && ev.endDate && ev.endDate !== ev.date ? ev.endDate : '';
   fTime.value = ev ? (ev.time||'') : '';
+  fEndTime.value = ev ? (ev.endTime||'') : '';
   fTitle.value = ev ? ev.title : '';
   fPerson.value = ev ? (ev.person||'') : getMyName();
   fMemo.value = ev ? (ev.memo||'') : '';
@@ -415,8 +501,12 @@ eventModal.addEventListener('click', e=>{ if(e.target===eventModal) closeEventMo
 
 eventForm.addEventListener('submit', async (e)=>{
   e.preventDefault();
+  const startDate = fDate.value;
+  const endDate = (fEndDate.value && fEndDate.value >= startDate) ? fEndDate.value : startDate;
   const data = {
-    date: fDate.value, time: fTime.value, title: fTitle.value.trim(),
+    date: startDate, endDate: endDate,
+    time: fTime.value, endTime: fEndTime.value,
+    title: fTitle.value.trim(),
     person: fPerson.value.trim(), memo: fMemo.value.trim()
   };
   if(!data.title || !data.person) return;
